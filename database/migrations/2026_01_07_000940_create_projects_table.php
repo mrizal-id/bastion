@@ -16,26 +16,37 @@ class CreateProjectsTable extends Migration
         Schema::create('projects', function (Blueprint $table) {
             $table->uuid('id')->primary();
 
-            // Relasi ke User (Client) dan Brand
+            // Relasi
             $table->foreignUuid('client_id')->constrained('users')->onDelete('cascade');
             $table->foreignUuid('brand_id')->constrained('brands')->onDelete('restrict');
+
+            // Penambahan Category Enum (Sesuai Fase 5 & 6)
+            $table->enum('category', [
+                'web_development',
+                'mobile_development',
+                'design_creative',
+                'writing_translation',
+                'marketing_sales',
+                'video_animation',
+                'other'
+            ])->default('other');
 
             // Financials
             $table->decimal('total_budget', 19, 4);
 
-            // Status Operasional
+            // Status Operasional & Escrow
             $table->enum('project_status', ['draft', 'active', 'completed', 'cancelled'])->default('draft');
-
-            // Status Keamanan Uang (Escrow)
             $table->enum('escrow_status', ['none', 'held', 'released', 'disputed', 'refunded'])->default('none');
 
             // Optimistic Locking & Audit
             $table->bigInteger('version')->default(1);
             $table->timestamps();
-            $table->softDeletes(); // Jaga-jaga jika ada sengketa data
+            $table->softDeletes();
 
+            // Indexing
+            $table->index('category');
             $table->index('project_status');
-            $table->index('escrow_status');
+            $table->index('brand_id');
         });
     }
 

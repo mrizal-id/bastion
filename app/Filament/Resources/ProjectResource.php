@@ -16,6 +16,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\BadgeColumn;
 use App\Services\TransactionService;
 use Filament\Notifications\Notification;
+use Illuminate\Database\Eloquent\Builder;
 use Exception;
 
 class ProjectResource extends Resource
@@ -36,6 +37,19 @@ class ProjectResource extends Resource
                 Select::make('brand_id')
                     ->relationship('brand', 'name')
                     ->searchable()
+                    ->required(),
+
+                // ADDED: Project Category Enum
+                Select::make('category')
+                    ->options([
+                        'web_development' => 'Web Development',
+                        'mobile_development' => 'Mobile Development',
+                        'design_creative' => 'Design & Creative',
+                        'writing_translation' => 'Writing & Translation',
+                        'marketing_sales' => 'Marketing & Sales',
+                        'video_animation' => 'Video & Animation',
+                        'other' => 'Other',
+                    ])
                     ->required(),
 
                 TextInput::make('total_budget')
@@ -70,6 +84,18 @@ class ProjectResource extends Resource
                 TextColumn::make('client.name')->label('Client')->searchable(),
                 TextColumn::make('brand.name')->label('Brand')->searchable(),
 
+                // ADDED: Category Column
+                TextColumn::make('category')
+                    ->enum([
+                        'web_development' => 'Web Dev',
+                        'mobile_development' => 'Mobile Dev',
+                        'design_creative' => 'Design',
+                        'writing_translation' => 'Writing',
+                        'marketing_sales' => 'Marketing',
+                        'video_animation' => 'Video',
+                        'other' => 'Other',
+                    ])->sortable(),
+
                 TextColumn::make('total_budget')
                     ->money('idr', true)
                     ->sortable(),
@@ -97,32 +123,38 @@ class ProjectResource extends Resource
                     ->icon('heroicon-o-cash')
                     ->color('success')
                     ->requiresConfirmation()
-                    // Hanya muncul jika status dana sedang ditahan (held)
-                    ->visible(fn($record) => $record->escrow_status === 'held')
+                    ->modalHeading('Konfirmasi Pencairan Dana')
+                    ->modalSubheading('Tindakan ini akan memindahkan saldo ke akun pemilik Brand. Pastikan pekerjaan telah diverifikasi.')
+                    ->visible(fn($record) => $record->escrow_status === 'held' && $record->project_status !== 'completed')
                     ->action(function ($record) {
                         try {
-                            // Validasi: Pastikan Brand Owner punya akun
-                            $account = $record->brand->owner->account;
+                            // Validasi Akun Finansial Owner Brand
+                            $owner = $record->brand->owner;
+                            $account = $owner->account;
 
                             if (!$account) {
-                                throw new Exception("Owner Brand belum memiliki akun finansial.");
+                                throw new Exception("Owner Brand ({$owner->name}) belum memiliki akun finansial.");
                             }
 
-                            // Eksekusi pemindahan saldo via Service
+                            // Eksekusi pemindahan saldo via Service (Atomatic & Immutable)
                             TransactionService::process(
                                 $account->id,
                                 'credit',
                                 $record->total_budget,
-                                'PROJECT_RELEASE',
+                                'project_payment', // Sesuai reference_type di tabel ledger
                                 $record->id
                             );
 
-                            // Update status proyek di database
-                            $record->update(['escrow_status' => 'released', 'project_status' => 'completed']);
+                            // Update status proyek secara atomik
+                            $record->update([
+                                'escrow_status' => 'released',
+                                'project_status' => 'completed',
+                                'version' => $record->version + 1 // Manual increment jika tidak lewat boot
+                            ]);
 
                             Notification::make()
                                 ->title('Pembayaran Berhasil Dicairkan!')
-                                ->body('Saldo telah ditambahkan ke akun owner brand.')
+                                ->body("Saldo sebesar IDR " . number_format($record->total_budget) . " telah masuk ke akun " . $owner->name)
                                 ->success()
                                 ->send();
                         } catch (Exception $e) {
@@ -135,6 +167,13 @@ class ProjectResource extends Resource
                     }),
                 Tables\Actions\EditAction::make(),
             ]);
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        // Optimasi N+1: Memuat relasi yang dibutuhkan untuk aksi Release Payment
+        return parent::getEloquentQuery()
+            ->with(['brand.owner.account', 'client']);
     }
 
     public static function getPages(): array

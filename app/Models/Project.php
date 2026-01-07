@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 use Spatie\Activitylog\Traits\LogsActivity;
 use Spatie\Activitylog\LogOptions;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Project extends Model
 {
@@ -19,17 +21,25 @@ class Project extends Model
     protected $fillable = [
         'client_id',
         'brand_id',
+        'category',
         'total_budget',
         'project_status',
         'escrow_status',
         'version'
     ];
 
+    protected $casts = [
+        'total_budget' => 'decimal:4',
+        'version' => 'integer',
+    ];
+
     protected static function boot()
     {
         parent::boot();
         static::creating(function ($model) {
-            $model->id = (string) Str::uuid();
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
         });
 
         static::updating(function ($model) {
@@ -45,15 +55,30 @@ class Project extends Model
             ->useLogName('project_audit');
     }
 
-    // Relasi ke Client (User)
-    public function client()
+    /**
+     * Relasi ke Portfolio (One-to-One)
+     * Karena sekarang project_id ada di tabel portfolios
+     */
+    public function portfolio(): HasOne
+    {
+        return $this->hasOne(Portfolio::class, 'project_id');
+    }
+
+    public function client(): BelongsTo
     {
         return $this->belongsTo(User::class, 'client_id');
     }
 
-    // Relasi ke Brand
-    public function brand()
+    public function brand(): BelongsTo
     {
         return $this->belongsTo(Brand::class, 'brand_id');
+    }
+
+    /**
+     * Relasi ke Review (One-to-One) - Fase 6
+     */
+    public function review(): HasOne
+    {
+        return $this->hasOne(Review::class, 'project_id');
     }
 }

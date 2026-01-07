@@ -6,11 +6,6 @@ use Illuminate\Database\Migrations\Migration;
 
 class CreatePermissionTables extends Migration
 {
-    /**
-     * Run the migrations.
-     *
-     * @return void
-     */
     public function up()
     {
         $tableNames = config('permission.table_names');
@@ -20,25 +15,27 @@ class CreatePermissionTables extends Migration
             throw new \Exception('Error: config/permission.php not loaded. Run [php artisan config:clear] and try again.');
         }
 
+        // 1. REVISI: Permissions Table menggunakan UUID
         Schema::create($tableNames['permissions'], function (Blueprint $table) {
-            $table->bigIncrements('id');
+            $table->uuid('id')->primary(); // Ubah ke UUID
             $table->string('name');
             $table->string('guard_name');
             $table->timestamps();
         });
 
+        // 2. REVISI: Roles Table menggunakan UUID
         Schema::create($tableNames['roles'], function (Blueprint $table) {
-            $table->bigIncrements('id');
+            $table->uuid('id')->primary(); // Ubah ke UUID
             $table->string('name');
             $table->string('guard_name');
             $table->timestamps();
         });
+
         Schema::create($tableNames['model_has_permissions'], function (Blueprint $table) use ($tableNames, $columnNames) {
-            $table->unsignedBigInteger('permission_id');
+            $table->uuid('permission_id'); // REVISI: FK harus UUID
 
             $table->string('model_type');
-            // REVISI: Ubah dari unsignedBigInteger ke uuid
-            $table->uuid($columnNames['model_morph_key']);
+            $table->uuid($columnNames['model_morph_key']); // Sudah benar UUID
             $table->index([$columnNames['model_morph_key'], 'model_type'], 'model_has_permissions_model_id_model_type_index');
 
             $table->foreign('permission_id')
@@ -53,11 +50,10 @@ class CreatePermissionTables extends Migration
         });
 
         Schema::create($tableNames['model_has_roles'], function (Blueprint $table) use ($tableNames, $columnNames) {
-            $table->unsignedBigInteger('role_id');
+            $table->uuid('role_id'); // REVISI: FK harus UUID
 
             $table->string('model_type');
-            // REVISI: Ubah dari unsignedBigInteger ke uuid
-            $table->uuid($columnNames['model_morph_key']);
+            $table->uuid($columnNames['model_morph_key']); // Sudah benar UUID
             $table->index([$columnNames['model_morph_key'], 'model_type'], 'model_has_roles_model_id_model_type_index');
 
             $table->foreign('role_id')
@@ -72,8 +68,8 @@ class CreatePermissionTables extends Migration
         });
 
         Schema::create($tableNames['role_has_permissions'], function (Blueprint $table) use ($tableNames) {
-            $table->unsignedBigInteger('permission_id');
-            $table->unsignedBigInteger('role_id');
+            $table->uuid('permission_id'); // REVISI: FK harus UUID
+            $table->uuid('role_id');       // REVISI: FK harus UUID
 
             $table->foreign('permission_id')
                 ->references('id')
@@ -93,18 +89,9 @@ class CreatePermissionTables extends Migration
             ->forget(config('permission.cache.key'));
     }
 
-    /**
-     * Reverse the migrations.
-     *
-     * @return void
-     */
     public function down()
     {
         $tableNames = config('permission.table_names');
-
-        if (empty($tableNames)) {
-            throw new \Exception('Error: config/permission.php not found and defaults could not be merged. Please publish the package configuration before proceeding, or drop the tables manually.');
-        }
 
         Schema::drop($tableNames['role_has_permissions']);
         Schema::drop($tableNames['model_has_roles']);
